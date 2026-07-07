@@ -1,0 +1,15 @@
+include README.md
+include LICENSE
+include SECURITY.md
+include CONTRIBUTING.md
+include CODE_OF_CONDUCT.md
+include CHANGELOG.md
+include install.sh
+recursive-include examples *
+recursive-include tests *.py
+exclude .env
+exclude .env.*
+prune .venv
+prune output
+prune dist
+prune build

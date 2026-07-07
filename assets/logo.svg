@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Nubli logo</title>
+  <desc id="desc">Rounded privacy badge with a soft N mark.</desc>
+  <rect width="512" height="512" rx="116" fill="#111827"/>
+  <path d="M137 318V194c0-30 24-54 54-54h130c30 0 54 24 54 54v124c0 30-24 54-54 54H191c-30 0-54-24-54-54Z" fill="#ECFDF5"/>
+  <path d="M183 319V193h45l64 77v-77h43v126h-42l-67-80v80h-43Z" fill="#111827"/>
+  <circle cx="376" cy="158" r="24" fill="#A7F3D0"/>
+  <circle cx="414" cy="205" r="10" fill="#6EE7B7"/>
+  <path d="M158 389c31 22 66 33 105 33 38 0 73-11 104-33" fill="none" stroke="#A7F3D0" stroke-width="18" stroke-linecap="round"/>
+</svg>

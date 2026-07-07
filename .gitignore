@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Build / packaging
+dist/
+build/
+*.egg-info/
+*.whl
+*.tar.gz
+
+# Local environments
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Nubli generated outputs
+*.nubli.md
+*.nubli.txt
+*.nubli-images/
+*.anon.pdf
+*.anon.visual.pdf
+*-anon-pages/
+output/
+reports/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs / temp
+*.log
+tmp/
+temp/
