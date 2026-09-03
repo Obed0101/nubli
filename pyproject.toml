@@ -34,6 +34,7 @@ pdf = ["pymupdf>=1.24.0", "pillow>=10.0.0"]
 ocr = ["pytesseract>=0.3.10", "pillow>=10.0.0"]
 docx = ["python-docx>=1.1.0"]
 xlsx = ["openpyxl>=3.1.0"]
+ner = ["spacy>=3.7,<4"]
 all = ["pymupdf>=1.24.0", "pytesseract>=0.3.10", "pillow>=10.0.0", "python-docx>=1.1.0", "openpyxl>=3.1.0"]
 
 [project.scripts]

@@ -70,9 +70,17 @@ python nubli.py --help
 
 ```bash
 python -m pip install -e .
-# or with all extras
+# or with all document extras
 python -m pip install -e '.[all]'
+
+# optional local NER support (no model download)
+python -m pip install -e '.[ner]'
+# install es_core_news_sm separately only if you want the Spanish model
 ```
+
+Nubli's deterministic layer works without optional dependencies. The optional
+NER layer is local-only and loads an installed model or an explicit local model
+path; it never downloads a model or sends document text to the network.
 
 ---
 
@@ -197,6 +205,14 @@ Useful flags:
 | `--no-pet` | Hide only the ASCII mascot. |
 | `--fuzzy-threshold 0.86` | Adjust typo matching sensitivity. |
 | `--no-fuzzy` | Disable fuzzy matching. |
+| `--document-label DOCUMENT-001` | Use a neutral title instead of the source filename. |
+| `--safe-report` | Keep reports free of original values (the default). |
+| `--unsafe-report` | Include original values only with an explicit warning. |
+| `--enable-ner` | Enable optional local spaCy NER; never downloads a model. |
+| `--ner-model PATH` | Load a local spaCy model directory. |
+| `--ner-language en` | Select the installed default model, for example `en_core_web_sm`. |
+| `--ner-threshold 0.85` | Replace only NER entities at or above this confidence. |
+| `--suggest-only-ner` | Report NER entities without replacing them. |
 
 ---
 
@@ -216,6 +232,32 @@ Matches variants like:
 - typo-like variants when fuzzy matching is enabled
 
 Case is preserved unless the replacement has custom casing such as `DemoXYZ`.
+
+---
+
+## Semantic categories and languages
+
+Automatic placeholders preserve the entity type instead of treating every
+entity as a person:
+
+- `PERSON-0001`
+- `COMPANY-0001`
+- `ADDRESS-0001`
+- `EMAIL-0001@example.com`
+- `PHONE-0001`
+- `ID-0001`
+- `ACCOUNT-0001`
+- `DATE-0001`
+- `LOCATION-0001`
+- `VALUE-0001`
+
+Email, phone, identifier, account and date patterns are language-independent.
+Context labels currently include Spanish and English, such as `Dirección` /
+`Address`, `Empresa` / `Company`, `Teléfono` / `Phone`, and `Nombre` / `Name`.
+The same detector can be extended with additional label dictionaries for
+Portuguese, French or other languages without changing the replacement engine.
+For broader entity recognition, install spaCy and an appropriate local model,
+then select it with `--ner-language` or `--ner-model`.
 
 ---
 
