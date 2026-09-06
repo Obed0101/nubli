@@ -86,6 +86,22 @@ path; it never downloads a model or sends document text to the network.
 
 ## Quick start
 
+### 30-second example
+
+Create a tiny local file, anonymize it and inspect the generated copy:
+
+```bash
+printf 'Acme S A hired Juan Pérez. Contact legal@acme.test.' > sample.txt
+nubli sample.txt \
+  --replace "Acme S A=Demo Company" \
+  --replace "Juan Pérez=Person 001" \
+  --replace "legal@acme.test=contact@example.test" \
+  --format markdown \
+  -o sample-anonymized.md
+```
+
+The source file stays unchanged, and the anonymized copy is created locally.
+
 ### Interactive mode
 
 ```bash
