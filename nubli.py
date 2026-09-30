@@ -2427,11 +2427,11 @@ def render_images(
     redact_regions: list[str] | None,
     document_label: str = DEFAULT_DOCUMENT_LABEL,
     progress: bool = False,
+    report_path: Path | None = None,
 ) -> list[Path]:
     ext = path.suffix.lower()
     fill_color = parse_hex_color(image_fill)
     text_color = parse_hex_color(image_text)
-    output_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     engine.visual_review_required = True
     output_label = safe_label_filename(document_label)
@@ -2439,6 +2439,9 @@ def render_images(
     if ext in PDF_EXTS:
         fitz = require_import("fitz", "python -m pip install pymupdf")
         doc = fitz.open(str(path))
+        output_paths = [output_dir / f"{output_label}-page-{index:04d}.png" for index in range(1, len(doc) + 1)]
+        validate_output_paths(path, output_paths, report_path)
+        output_dir.mkdir(parents=True, exist_ok=True)
         for index, page in enumerate(doc, start=1):
             image = render_pdf_page_to_pil(page, dpi=dpi)
             boxes = [] if force_ocr else pdf_text_layer_boxes(page, dpi=dpi)
@@ -2448,7 +2451,7 @@ def render_images(
                 boxes = ocr_word_boxes(image, lang=lang, min_conf=min_conf)
             redacted = redact_image_with_boxes(image, boxes, engine, fill_color, text_color)
             redacted = apply_visual_redactions(redacted, engine, redact_header, header_text, redact_regions, fill_color, text_color)
-            out_path = output_dir / f"{output_label}-page-{index:04d}.png"
+            out_path = output_paths[index - 1]
             redacted.save(str(out_path))
             written.append(out_path)
             if progress:
@@ -2456,12 +2459,14 @@ def render_images(
         return written
 
     if ext in IMAGE_EXTS:
+        out_path = output_dir / f"{output_label}-image.png"
+        validate_output_paths(path, [out_path], report_path)
+        output_dir.mkdir(parents=True, exist_ok=True)
         Image = require_import("PIL.Image", "python -m pip install pillow pytesseract")
         image = Image.open(str(path))
         boxes = ocr_word_boxes(image, lang=lang, min_conf=min_conf)
         redacted = redact_image_with_boxes(image, boxes, engine, fill_color, text_color)
         redacted = apply_visual_redactions(redacted, engine, redact_header, header_text, redact_regions, fill_color, text_color)
-        out_path = output_dir / f"{output_label}-image.png"
         redacted.save(str(out_path))
         written.append(out_path)
         if progress:
@@ -2538,6 +2543,23 @@ def resolve_image_output(input_path: Path, output: str | None) -> Path:
     if output is None:
         return input_path.with_name("document.nubli-images")
     return Path(output)
+
+
+def paths_refer_to_same_file(left: Path, right: Path) -> bool:
+    return left.resolve() == right.resolve() or (
+        left.exists() and right.exists() and left.samefile(right)
+    )
+
+
+def validate_output_paths(input_path: Path, output_paths: Sequence[Path], report_path: Path | None = None) -> None:
+    """Reject aliases before writing, including symlinks and existing hard links."""
+    if report_path is not None and paths_refer_to_same_file(report_path, input_path):
+        die("report path must be different from the input file; choose another --report path")
+    for output_path in output_paths:
+        if paths_refer_to_same_file(output_path, input_path):
+            die("output path must be different from the input file; choose another --output path")
+        if report_path is not None and paths_refer_to_same_file(report_path, output_path):
+            die("report path must be different from output files; choose another --report path")
 
 
 def normalize_document_label(value: str | None) -> str:
@@ -2822,6 +2844,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.safe_report and args.unsafe_report:
         die("--safe-report and --unsafe-report cannot be used together")
     args.document_label = normalize_document_label(args.document_label)
+    report_path = Path(args.report).expanduser().resolve() if args.report else None
+    validate_output_paths(input_path, [], report_path)
     if args.unsafe_report:
         print("WARNING: --unsafe-report may contain original sensitive values.", file=sys.stderr)
 
@@ -2843,6 +2867,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.format in {"markdown", "text"}:
         suffix = ".md" if args.format == "markdown" else ".txt"
         out_path = resolve_text_output(input_path, args.output, suffix).resolve()
+        validate_output_paths(input_path, [out_path], report_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         ui(args, "[3/5] process : extracting text and applying replacements")
         content = to_markdown(
@@ -2883,6 +2908,7 @@ def main(argv: list[str] | None = None) -> int:
             redact_regions=args.redact_region,
             document_label=args.document_label,
             progress=not args.quiet,
+            report_path=report_path,
         )
         suggestions = merge_suggestions(engine.suggestions)
         show_match_summary(args, engine)
@@ -2892,9 +2918,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.quiet:
                 print(path)
 
-    report_path: Path | None = None
-    if args.report:
-        report_path = Path(args.report).expanduser().resolve()
+    if report_path is not None:
         report_path.parent.mkdir(parents=True, exist_ok=True)
         safe_report = not args.unsafe_report
         report = {
