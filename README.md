@@ -188,6 +188,8 @@ x,y,width,height=Label
 
 Nubli is intentionally conservative.
 
+Output files and JSON reports cannot point to the input file, and a report cannot share a path with generated output. Nubli refuses these conflicts before writing, including symbolic links and existing hard links, so an accidental `-o input.txt` cannot overwrite the original.
+
 By default it refuses to keep output when it finds **zero replacements/redactions**. If running in a terminal, it asks before keeping risky output. In non-interactive mode it fails closed.
 
 Direct CLI runs show an ASCII banner, progress steps and match counts by default. Use `--quiet` for scripts or `--no-pet` to hide only the mascot.
