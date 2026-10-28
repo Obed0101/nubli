@@ -124,7 +124,7 @@ nubli contrato.pdf \
 {
   "Acme S A": "Demo Company",
   "Juan Pérez": "Persona Demo",
-  "legal@empresa.com": "persona@demo.local",
+  "legal@empresa.example": "persona@demo.local",
   "507-6000-0000": "TEL-0000"
 }
 ```

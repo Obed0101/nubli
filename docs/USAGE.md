@@ -140,7 +140,7 @@ nubli --help-install
 nubli documento.pdf \
   --replace "Empresa Real S A=Empresa Demo" \
   --replace "Juan Pérez=Persona Demo" \
-  --replace "juan@empresa.com=persona@demo.local" \
+  --replace "juan@empresa.example=persona@demo.local" \
   --format markdown \
   -o documento-anon.md
 ```
@@ -209,7 +209,7 @@ Crea `rules.json`:
 {
   "Empresa Real S A": "Empresa Demo",
   "Juan Pérez": "Persona Demo",
-  "juan@empresa.com": "persona@demo.local",
+  "juan@empresa.example": "persona@demo.local",
   "507-6000-0000": "TEL-0000",
   "8-888-888": "ID-0000"
 }
