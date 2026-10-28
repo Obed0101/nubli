@@ -198,5 +198,46 @@ class SemanticAnonymizationTests(unittest.TestCase):
             self.assertIn("EMAIL-0001@example.com", output)
 
 
+class RuleInteractionRegressionTests(unittest.TestCase):
+    def engine_with_company_rule(self) -> nubli.ReplacementEngine:
+        rule = nubli.parse_rule_text("Constructora Ríos S.A.=Demo Company", False, True, False, 0.88)
+        return nubli.ReplacementEngine([rule])
+
+    def test_fuzzy_rule_does_not_rewrite_an_email_domain_and_leak_the_local_part(self) -> None:
+        result = self.engine_with_company_rule().apply(
+            "Entre Constructora Ríos S.A. y nosotros.\nCorreo: maria.fernandez@constructorarios.example\n"
+        )
+        self.assertNotIn("maria.fernandez", result)
+        self.assertIn("EMAIL-0001@example.com", result)
+
+    def test_text_next_to_a_rule_replacement_is_not_merged_into_a_person(self) -> None:
+        result = self.engine_with_company_rule().apply("Entre Constructora Ríos S.A. y nosotros.")
+        self.assertIn("Entre Demo Company", result)
+        self.assertNotIn("PERSON", result)
+
+    def test_fuzzy_match_does_not_swallow_the_preceding_word(self) -> None:
+        result = self.engine_with_company_rule().apply("Firmado por el gerente de Constructora Rios SA.")
+        self.assertIn("gerente de Demo Company", result)
+
+    def test_amounts_are_not_detected_as_identifiers(self) -> None:
+        for amount in ("B/. 4,500.00", "$ 500.00", "un total de 4,500.00 balboas"):
+            with self.subTest(amount=amount):
+                result = nubli.ReplacementEngine([]).apply(f"Pago mensual: {amount}")
+                self.assertNotIn("ID-", result)
+
+    def test_identifier_never_masks_only_part_of_a_longer_account_number(self) -> None:
+        result = nubli.ReplacementEngine([]).apply("Cuenta: 04-12-34-567890-1")
+        self.assertNotIn("567890", result)
+        self.assertRegex(result, r"Cuenta: ACCOUNT-\d{4}$")
+        unlabeled = nubli.ReplacementEngine([]).apply("Referencia 04-12-34-567890-1 pendiente")
+        self.assertNotIn("567890", unlabeled)
+        self.assertNotRegex(unlabeled, r"\d{4}-\d")
+
+    def test_hyphenated_id_is_still_detected(self) -> None:
+        result = nubli.ReplacementEngine([]).apply("cédula 8-765-4321.")
+        self.assertIn("ID-0001", result)
+        self.assertNotIn("8-765-4321", result)
+
+
 if __name__ == "__main__":
     unittest.main()
