@@ -79,8 +79,12 @@ PII_PATTERNS: list[tuple[str, re.Pattern[str], str]] = [
         PHONE_PATTERN,
         "PHONE-0001",
     ),
-    ("id_or_ruc", re.compile(r"(?<!\w)[0-9]{1,3}(?:[-/.\s][0-9]{1,8}){1,3}(?!\w)"), "ID-0001"),
+    # Never starting or stopping inside a longer number: the tail of an amount
+    # like 4,500.00 or the middle of an account like 04-12-34-567890-1.
+    ("id_or_ruc", re.compile(r"(?<!\w)(?<!\d[,./-])[0-9]{1,3}(?:[-/.\s][0-9]{1,8}){1,5}(?!\w|[-/.]\d)"), "ID-0001"),
 ]
+EMAIL_PATTERN = PII_PATTERNS[0][1]
+CURRENCY_BEFORE_PATTERN = re.compile(r"(?:B/\.?|\$|US\$|USD|EUR|€|£)\s*$", re.IGNORECASE)
 
 ACCOUNT_PATTERN = re.compile(
     r"(?i)(?:\b(?:cuenta(?:\s+bancaria)?|account|iban|swift|bank\s+account|n[úu]mero\s+de\s+cuenta)\b)\s*"
@@ -771,13 +775,23 @@ def detect_sensitive_content(text: str, include_low_confidence: bool = True) -> 
             )
         )
 
+    # A labelled account is reported once, as an account, by the loop below.
+    account_spans = [
+        (match.start("value"), match.end("value"))
+        for match in ACCOUNT_PATTERN.finditer(text)
+        if len(re.sub(r"[\s-]", "", match.group("value"))) >= 8
+        and not _is_placeholder_label(text, match.start(), match.start("value"))
+    ]
     for kind, pattern, _target in PII_PATTERNS:
         for match in pattern.finditer(text):
             if kind == "phone" and _context_has_label(text, match.start(), IDENTIFIER_LABEL_WORDS):
                 continue
+            if kind == "id_or_ruc" and any(start <= match.start() and match.end() <= end for start, end in account_spans):
+                continue
             if kind == "id_or_ruc" and (
                 DATE_PATTERN.fullmatch(match.group(0).strip())
                 or PHONE_PATTERN.fullmatch(match.group(0).strip())
+                or CURRENCY_BEFORE_PATTERN.search(text[max(0, match.start() - 6):match.start()])
             ):
                 continue
             add(kind, match.group(0), match.start(), match.end(), 0.99, "deterministic pattern")
@@ -1303,9 +1317,9 @@ class ReplacementEngine:
             normalize_token(token, case_sensitive=rule.case_sensitive) for token in source_tokens(rule.target)
         )
         token_matches = list(TOKEN_RE.finditer(text))
-        candidates: list[_Candidate] = []
         max_window = min(8, max(1, len(source_tokens(rule.source)) + 3))
         scanner = StructuralScanner(text)
+        scored: list[tuple[float, int, int]] = []
 
         for start in range(len(token_matches)):
             collected = ""
@@ -1318,21 +1332,29 @@ class ReplacementEngine:
                 span = (token_matches[start].start(), token_matches[end].end())
                 if scanner.crosses_delimiter(*span):
                     continue
-                if similarity(collected, target) >= rule.fuzzy_threshold:
-                    original = text[span[0]:span[1]]
-                    value = adapt_case(original, rule.target) if rule.preserve_case else rule.target
-                    candidates.append(
-                        _Candidate(
-                            start=span[0],
-                            end=span[1],
-                            replacement=value,
-                            kind="rule",
-                            index=rule_index,
-                            priority=850,
-                        )
-                    )
-                    break
-        return candidates
+                score = similarity(collected, target)
+                if score >= rule.fuzzy_threshold:
+                    scored.append((score, span[0], span[1]))
+
+        # Overlapping windows compete on similarity, so "de Constructora Rios SA"
+        # loses to "Constructora Rios SA" instead of swallowing the word before it.
+        candidates: list[_Candidate] = []
+        for score, span_start, span_end in sorted(scored, key=lambda item: (-item[0], item[2] - item[1], item[1])):
+            if any(not (span_end <= taken.start or span_start >= taken.end) for taken in candidates):
+                continue
+            original = text[span_start:span_end]
+            value = adapt_case(original, rule.target) if rule.preserve_case else rule.target
+            candidates.append(
+                _Candidate(
+                    start=span_start,
+                    end=span_end,
+                    replacement=value,
+                    kind="rule",
+                    index=rule_index,
+                    priority=850,
+                )
+            )
+        return sorted(candidates, key=lambda item: item.start)
 
     def _select_candidates(self, candidates: Sequence[_Candidate]) -> list[_Candidate]:
         unique: dict[tuple[int, int, int, str], _Candidate] = {}
@@ -1392,6 +1414,20 @@ class ReplacementEngine:
                 )
             candidates.extend(self._fuzzy_candidates(text, index, rule))
 
+        # A rule that rewrites only part of an email (usually the domain) breaks
+        # its shape, so the email detector misses it and the local part leaks.
+        # Leave those emails whole for the deterministic stage instead.
+        email_spans = [(match.start(), match.end()) for match in EMAIL_PATTERN.finditer(text)]
+        candidates = [
+            candidate
+            for candidate in candidates
+            if not any(
+                candidate.start < email_end and candidate.end > email_start
+                and not (candidate.start <= email_start and candidate.end >= email_end)
+                for email_start, email_end in email_spans
+            )
+        ]
+
         selected = self._select_candidates(candidates)
         for candidate in selected:
             if candidate.kind == "rule" and candidate.index >= 0:
@@ -1445,8 +1481,29 @@ class ReplacementEngine:
         self._register_auto_match(detection.kind)
         return replacement
 
+    def _rule_target_spans(self, text: str) -> list[tuple[int, int]]:
+        return [
+            (match.start(), match.end())
+            for rule in self.rules
+            if rule.target
+            for match in re.finditer(re.escape(rule.target), text)
+        ]
+
     def _apply_deterministic_stage(self, text: str) -> tuple[str, list[_Candidate]]:
-        detections = detect_sensitive_content(text, include_low_confidence=True)
+        # Text a rule already replaced is final: "Entre Demo Company" must not
+        # become a person name built from the word before the replacement.
+        # Blanking it (same length, so offsets hold) still lets a real name
+        # right next to a replacement be detected on its own.
+        target_spans = self._rule_target_spans(text)
+        masked = text
+        for start, end in target_spans:
+            masked = masked[:start] + " " * (end - start) + masked[end:]
+        detections = detect_sensitive_content(masked, include_low_confidence=True)
+        detections = [
+            detection
+            for detection in detections
+            if not any(detection.start < end and detection.end > start for start, end in target_spans)
+        ]
         candidates: list[_Candidate] = []
         pending: list[SensitiveDetection] = []
         for detection in detections:
